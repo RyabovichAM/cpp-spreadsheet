@@ -72,7 +72,7 @@ public:
     virtual ~Expr() = default;
     virtual void Print(std::ostream& out) const = 0;
     virtual void DoPrintFormula(std::ostream& out, ExprPrecedence precedence) const = 0;
-    virtual double Evaluate(/*добавьте сюда нужные аргументы*/ args) const = 0;
+    virtual double Evaluate(EvaluateFunc func) const = 0;
 
     // higher is tighter
     virtual ExprPrecedence GetPrecedence() const = 0;
@@ -142,8 +142,35 @@ public:
         }
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/) const override {
-			// Скопируйте ваше решение из предыдущих уроков.
+    double Evaluate(EvaluateFunc func) const override {
+        switch(type_) {
+        case Add:
+            if(!std::isfinite(lhs_->Evaluate(func) + rhs_->Evaluate(func))) {
+                throw FormulaError(FormulaError::Category::Arithmetic);
+            } else {
+                return lhs_->Evaluate(func) + rhs_->Evaluate(func);
+            }
+        case Subtract:
+            if(!std::isfinite(lhs_->Evaluate(func) - rhs_->Evaluate(func))) {
+                throw FormulaError(FormulaError::Category::Arithmetic);
+            } else {
+                return lhs_->Evaluate(func) - rhs_->Evaluate(func);
+            }
+        case Multiply:
+            if(!std::isfinite(lhs_->Evaluate(func) * rhs_->Evaluate(func))) {
+                throw FormulaError(FormulaError::Category::Arithmetic);
+            } else {
+                return lhs_->Evaluate(func) * rhs_->Evaluate(func);
+            }
+        case Divide:
+            if(!std::isfinite(lhs_->Evaluate(func) / rhs_->Evaluate(func))) {
+                throw FormulaError(FormulaError::Category::Arithmetic);
+            } else {
+                return lhs_->Evaluate(func) / rhs_->Evaluate(func);
+            }
+        default:
+            assert(false);
+        }
     }
 
 private:
@@ -180,8 +207,15 @@ public:
         return EP_UNARY;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
-        // Скопируйте ваше решение из предыдущих уроков.
+    double Evaluate(EvaluateFunc func) const override {
+        switch(type_) {
+        case UnaryMinus:
+            return -operand_->Evaluate(func);
+        case UnaryPlus:
+            return operand_->Evaluate(func);
+        default:
+            assert(false);
+        }
     }
 
 private:
@@ -211,8 +245,8 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
-        // реализуйте метод.
+    double Evaluate(EvaluateFunc func) const override {
+        return func(*cell_);
     }
 
 private:
@@ -237,7 +271,7 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(/*добавьте нужные аргументы*/ args) const override {
+    double Evaluate(EvaluateFunc func) const override {
         return value_;
     }
 
@@ -391,8 +425,8 @@ void FormulaAST::PrintFormula(std::ostream& out) const {
     root_expr_->PrintFormula(out, ASTImpl::EP_ATOM);
 }
 
-double FormulaAST::Execute(/*добавьте нужные аргументы*/ args) const {
-    return root_expr_->Evaluate(/*добавьте нужные аргументы*/ args);
+double FormulaAST::Execute(EvaluateFunc func) const {
+    return root_expr_->Evaluate(func);
 }
 
 FormulaAST::FormulaAST(std::unique_ptr<ASTImpl::Expr> root_expr, std::forward_list<Position> cells)
