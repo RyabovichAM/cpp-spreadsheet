@@ -20,24 +20,7 @@ void Sheet::SetCell(Position pos, std::string text) {
         cells_[pos.row][pos.col] = std::make_unique<Cell>(*this);
     }
 
-    std::string tmp = cells_[pos.row][pos.col].get()->GetText();
-    dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->Set(std::move(text));
-
-    for(auto cell_pos : dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->GetReferencedCells()) {
-        Resize(cell_pos);
-        if(cells_[cell_pos.row][cell_pos.col].get() == nullptr) {
-            cells_[cell_pos.row][cell_pos.col] = std::make_unique<Cell>(*this);
-        }
-        dynamic_cast<Cell*>(cells_[cell_pos.row][cell_pos.col].get())->AddDependentCell(dynamic_cast<Cell*>(cells_[pos.row][pos.col].get()));
-    }
-    try {
-        CheckCyclicDependences(pos);
-        dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->CacheInvalidate();
-    } catch(CircularDependencyException& err) {
-        dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->Set(tmp);
-        throw;
-    }
-
+    dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->Set(std::move(text),pos);
 }
 
 const CellInterface* Sheet::GetCell(Position pos) const {
@@ -64,6 +47,10 @@ CellInterface* Sheet::GetCell(Position pos) {
     return nullptr;
 }
 
+std::unique_ptr<CellInterface>& Sheet::GetUniqPtrCell(Position pos) {
+    return cells_[pos.row][pos.col];
+}
+
 void Sheet::ClearCell(Position pos) {
     if(pos.col < 0 || pos.row < 0 || pos.col >= Position::MAX_COLS || 
         pos.row >= Position::MAX_ROWS){
@@ -72,16 +59,8 @@ void Sheet::ClearCell(Position pos) {
 
     if(!(min_print_size_.rows - 1 < pos.row || 
         min_print_size_.cols - 1 < pos.col)) {
-        // cells_[pos.row][pos.col].reset(nullptr);
-        Cell* cell = dynamic_cast<Cell*>(cells_[pos.row][pos.col].get());
-        cell->CacheInvalidate();
-        for(auto cell_pos : cell->GetReferencedCells()) {
-            Cell* curr_cell = dynamic_cast<Cell*>(GetCell(cell_pos));
-            if(curr_cell) {
-                curr_cell->RemoveDependentCell(cell);
-            }
-        }
-        // cell->Clear();
+
+        dynamic_cast<Cell*>(cells_[pos.row][pos.col].get())->Clear();
         cells_[pos.row][pos.col].reset(nullptr);
 
         for(int row = min_print_size_.rows - 1;row >= 0; --row) {
@@ -192,22 +171,5 @@ void Sheet::Resize(Position pos) {
 
     if(min_print_size_.cols <= pos.col) {
         min_print_size_.cols = pos.col + 1;
-    }
-}
-
-void Sheet::CheckCyclicDependences(Position pos) const {
-    std::unordered_set<Position,PositionHasher> tmp_cells;
-    CheckCyclicDependences(pos, tmp_cells);
-}
-
-void Sheet::CheckCyclicDependences(Position pos,std::unordered_set<Position,PositionHasher>& tmp_cells) const {
-    auto cell = GetCell(pos);
-    for (auto cell_pos : cell->GetReferencedCells()) {
-        // const CellInterface*  curr_cell = GetCell(cell_pos);
-        if(tmp_cells.count(cell_pos)) {
-            throw CircularDependencyException("Circular Dependency");
-        }
-        tmp_cells.insert(cell_pos);
-        CheckCyclicDependences(cell_pos, tmp_cells);
     }
 }

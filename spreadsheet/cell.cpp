@@ -7,26 +7,49 @@
 #include <optional>
 
 
-Cell::Cell(SheetInterface& sheet)
+Cell::Cell(Sheet& sheet)
     : sheet_{sheet}, impl_{std::make_unique<EmptyImpl>()} {
 }
 
-void Cell::Set(std::string text) {
+void Cell::Set(const std::string& text, Position pos) {
+    if(GetText() == text) {
+        return;
+    }
+
+    if(text[0] == '=') {
+        CheckCyclicDependences(text,pos);
+    }
+
+    CacheInvalidate();
+
+    for(auto cell_pos : GetReferencedCells()) {
+        Cell* curr_cell = dynamic_cast<Cell*>(sheet_.GetCell(cell_pos));
+        if(curr_cell) {
+            curr_cell->RemoveDependentCell(this);
+        }
+    }
+
     if(text[0] == '=' && text.size() > 1) {
-        impl_ = std::make_unique<FormulaImpl>(sheet_, std::move(text.substr(1)));
-        return;
-    }
-
-    if(text.size() == 0) {
+        impl_ = std::make_unique<FormulaImpl>(sheet_, text.substr(1));
+    } else if(text.size() == 0) {
         impl_ = std::make_unique<EmptyImpl>();
-        return;
+    } else {
+        impl_ = std::make_unique<TextImpl>(text);
     }
 
-    impl_ = std::make_unique<TextImpl>(std::move(text));
+
+    for(auto cell_pos : GetReferencedCells()) {
+        sheet_.Resize(cell_pos);
+        if(sheet_.GetUniqPtrCell(cell_pos).get() == nullptr) {
+            sheet_.GetUniqPtrCell(cell_pos) = std::make_unique<Cell>(sheet_);
+        }
+        dynamic_cast<Cell*>(sheet_.GetUniqPtrCell(cell_pos).get())->AddDependentCell(this);
+    }
+
 }
 
 void Cell::Clear() {
-    impl_ = std::make_unique<EmptyImpl>();
+    Set("", {0,0});
 }
 
 Cell::Value Cell::GetValue() const {
@@ -57,6 +80,26 @@ void Cell::CacheInvalidate() {
     impl_->ClearCache();
     for(Cell* cell : dependent_cells_) {
         cell->CacheInvalidate();
+    }
+}
+
+void Cell::CheckCyclicDependences(const std::string& cell_text, Position pos) const {
+    std::unique_ptr<FormulaInterface> form = ParseFormula(cell_text.substr(1));
+    std::unordered_set<Position,PositionHasher> tmp_cells;
+    tmp_cells.insert(pos);
+    CheckCyclicDependences(form->GetReferencedCells(), tmp_cells);
+}
+
+void Cell::CheckCyclicDependences(const std::vector<Position>& poses, std::unordered_set<Position,PositionHasher>& tmp_cells) const {
+    for (auto cell_pos : poses) {
+        if(tmp_cells.count(cell_pos)) {
+            throw CircularDependencyException("Circular Dependency");
+        }
+        tmp_cells.insert(cell_pos);
+        Cell* cell = dynamic_cast<Cell*>(sheet_.GetCell(cell_pos));
+        if(cell != nullptr) {
+            CheckCyclicDependences(cell->GetReferencedCells(), tmp_cells);
+        }
     }
 }
 

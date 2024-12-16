@@ -9,21 +9,26 @@
 #include <unordered_set>
 
 class Sheet;
+class PositionHasher {
+public:
+    size_t operator()(const Position& pos) const  {
+        return pos.row * 37 + pos.col;
+    }
+};
 
 class Cell : public CellInterface {
 public:
-    Cell(SheetInterface& sheet);
+    Cell(Sheet& sheet);
 
-    void Set(std::string text);
+    void Set(const std::string& text, Position pos);
     void Clear();
 
     Value GetValue() const override;
     std::string GetText() const override;
     std::vector<Position> GetReferencedCells() const override;
     bool IsReferenced() const;
-    void AddDependentCell(Cell*);
-    void RemoveDependentCell(Cell*);
     void CacheInvalidate();
+    void CheckCyclicDependences(const std::string& cell_text, Position pos) const;
 
 private:
     class Impl {
@@ -70,7 +75,11 @@ private:
     };
 
 private:
-    const SheetInterface& sheet_;
+    Sheet& sheet_;
     std::unique_ptr<Impl> impl_;
     std::unordered_set<Cell*> dependent_cells_;
+
+    void CheckCyclicDependences(const std::vector<Position>& poses, std::unordered_set<Position,PositionHasher>& tmp_cells) const;
+    void AddDependentCell(Cell*);
+    void RemoveDependentCell(Cell*);
 };
